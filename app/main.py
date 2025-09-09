@@ -1,39 +1,12 @@
 from scalar_fastapi import get_scalar_api_reference
 from fastapi import FastAPI, HTTPException, status
 from typing import Any
-from app.schemas import ShipmentCreate, ShipmentRead, ShipmentUpdate, ShipmentStatus
-from .database import shipments, save
+from app.schemas import ShipmentCreate, ShipmentRead, ShipmentUpdate  # , ShipmentStatus
+from .database import Database
 # from pydantic import BaseModel
 
 app = FastAPI()
-
-# shipments: dict[int, dict[str, Any]] = {
-#     123: {
-#         "weight": 1.2,
-#         "content": "Wooden table",
-#         "status": "In Transit",
-#     },
-#     124: {
-#         "weight": 5.7,
-#         "content": "M4 Mac Book",
-#         "status": "In Transit",
-#     },
-#     125: {
-#         "weight": 3.9,
-#         "content": "Furniture",
-#         "status": "Delivered",
-#     },
-#     126: {
-#         "weight": 9.4,
-#         "content": "Glass Plaque",
-#         "status": "In Transit",
-#     },
-#     127: {
-#         "weight": 8.5,
-#         "content": "Hover Board",
-#         "status": "Delivered",
-#     },
-# }
+db = Database()
 
 
 class City:
@@ -43,98 +16,69 @@ class City:
 
 
 @app.post("/shipment")  # , response_model=ShipmentCreate)
-def submit_shipment(body: ShipmentCreate) -> dict[str, int]:
+def submit_shipment(body: ShipmentCreate):  # -> dict[str, int]:
     if body.weight > 25:
         raise HTTPException(
             status_code=status.HTTP_406_NOT_ACCEPTABLE,
             detail="Weight is above shipment limits! \nMaximum weight limit is 25",
         )
-    new_id: int = max(shipments.keys()) + 1
-    # print(dict(body))
-    # shipments[new_id] = dict(body)
-    # shipments[new_id]["status"] = "Placed!"
-    # print(shipments[new_id])
-    shipments[new_id] = {
-        **body.model_dump(),
-        "id": new_id,
-        "status": ShipmentStatus.placed,
-    }
-    save()
-    return {"id": new_id}
-    # return ShipmentCreate(**shipments[new_id])
+    new_id = db.create_shipment(shipment=body)
+    shipment = db.read_shipments(id=new_id)
+    db.close()
+    return shipment
 
 
 @app.get("/shipment/latest")
-async def get_latest_shipment() -> dict[str, Any]:
-    id = max(shipments.keys())
-    print(len(shipments), id)
-    return shipments[id]
+async def get_latest_shipment():  # -> dict[str, Any]:
+    id = db.max_id()
+    shipment = db.read_shipments(id)
+    db.close()
+    return shipment
 
 
 @app.get("/shipment", response_model=ShipmentRead)
-def get_shipment(id: int) -> ShipmentRead:
-    print(shipment_dict)
-    if id not in shipments.keys():
+def get_shipment(id: int):  # -> ShipmentRead:
+    shipment = db.read_shipments(id=id)
+    db.close()
+    if shipment is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"The ID {id} you provided doesn't exist",
         )
-        # return {"Error": f"The ID {id} you provided doesn't exist"}
-    return ShipmentRead(**shipments[id])
+    return shipment
 
 
-@app.get("/shipment/{id}/")
-async def shipment_fields(id: int, feild: str):
-    return shipments[id][feild]
+# @app.get("/shipment/{id}/")
+# async def shipment_fields(id: int, field: str):
+#     return shipments[id][field]
 
 
 @app.put("/shipment")
-def shipment_update(
-    id: int, content: str, weight: float, status: str
-) -> dict[str, Any]:
-    shipments[id] = {"content": content, "weight": weight, "status": status}
-    return shipments[id]
-
-
-# @app.patch("/shipment")
-# def shipment_patch(
-#     id: int,
-#     content: str | None = None,
-#     weight: float | None = None,
-#     status: str | None = None,
-# ) -> dict[str, Any]:
-#     shipment = shipments[id]
-#     if content:
-#         shipment["content"] = content
-
-#     if weight:
-#         shipment["weight"] = weight
-
-#     if status:
-#         shipment["status"] = status
-#     shipments[id] = shipment
-#     return shipments[id]
-# async def shipment_patch(id: int, body: dict[str, Any]):
+def shipment_update(id: int, shipment: ShipmentUpdate):  # -> dict[str, Any]:
+    # shipments[id] = {"content": content, "weight": weight, "status": status}
+    shipment = db.update_shipment(id=id, shipment=shipment)
+    # db.close()
+    return shipment
 
 
 @app.patch("/shipment", response_model=ShipmentRead)
 async def shipment_patch(id: int, body: ShipmentUpdate):  # dict[str, ShipmentStatus]):
-    print("@" * 25)
-    # print(f"{shipments[id].update(body)}")
-    print(shipments[id].update(body.model_dump(exclude_none=True)))
-    shipments[id].update(body.model_dump(exclude_none=True, exclude_defaults=False))
-    print("@" * 25)
-    save()
-    return shipments[id]
+    shipment = db.update_shipment(id=id, shipment=body)
+    db.close()
+    return shipment
+    # print(shipments[id].update(body.model_dump(exclude_none=True)))
+    # shipments[id].update(body.model_dump(exclude_none=True, exclude_defaults=False))
+    # return shipments[id]
     # return ShipmentRead(**shipments[id])
 
 
 @app.delete("/shipment")
 async def delete_shipment(id: int) -> dict[str, str]:
-    shipments.pop(id)
+    db.delete_shipment(id=id)
     return {"Detail": f"Shipment with #{id} has been deleted Successfully"}
 
 
+"""
 def adlibs(adlib: str):
     def no_turning_back(func):
         def wrapper_func():
@@ -208,6 +152,8 @@ def get_transit():
         "content": "Map",
         "status": "Following --- route...",
     }
+
+"""
 
 
 @app.get("/scalar", include_in_schema=False)
