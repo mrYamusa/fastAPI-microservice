@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from random import randint
 from enum import Enum
+from datetime import datetime
 
 
 def random_destination():
@@ -35,7 +36,10 @@ class Order(BaseModel):
 
 
 class ShipmentCreate(BaseShipments):
-    order: Order = Field()
+    order: Order | None = Field(default=None, description="Order details")
+    estimated_delivery: datetime | None = Field(
+        default_factory=datetime.utcnow, description="Estimated delivery date"
+    )
 
 
 class ShipmentUpdate(BaseModel):
